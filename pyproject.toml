@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "check-secrets"
+version = "0.1.0"
+description = "Offline, dependency-free secret checks for the Git index"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Mark Gurevich"}]
+keywords = ["git", "pre-commit", "secrets", "security"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+check-secrets = "check_secrets.scanner:main"
+
+[project.urls]
+Repository = "https://github.com/gurevmark/check-secrets"
+Issues = "https://github.com/gurevmark/check-secrets/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Requires check-secrets on PATH. Missing commands also block the commit.
+exec check-secrets

@@ -1,0 +1,10 @@
+- id: check-secrets
+  name: Check Git index for secrets
+  description: Scan full staged blobs; never read working-tree file contents.
+  entry: check-secrets
+  language: python
+  pass_filenames: false
+  always_run: true
+  require_serial: true
+  stages: [pre-commit, manual]
+  minimum_pre_commit_version: "3.2.0"
