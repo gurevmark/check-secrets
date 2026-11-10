@@ -33,9 +33,9 @@ EXIT_INCOMPLETE = 2
 DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024
 GIT_TIMEOUT_SECONDS = 30
 
-# Узнаваемые форматы токенов проверяются независимо от имени переменной.
-# Группа «value» выделяет значение, для которого допустимы явные заглушки.
-# Для остальных правил совпадение с форматом само по себе считается находкой.
+# Recognizable token formats are checked regardless of the variable name.
+# The "value" group captures values that may be explicit placeholders.
+# For other rules, matching the format is enough to report a finding.
 TOKEN_RULE_PATTERNS = [
     ("private-key", r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"),
     ("aws-access-key", r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
@@ -63,16 +63,16 @@ TOKEN_RULES = [
     for rule_name, pattern in TOKEN_RULE_PATTERNS
 ]
 
-# Общие правила ищут литералы рядом с именами password, api_key, token и т. п.
-# Префикс позволяет распознать, например, DATABASE_PASSWORD и clientSecret.
+# Generic rules find literals assigned to names such as password, api_key, or token.
+# The prefix also matches names such as DATABASE_PASSWORD and clientSecret.
 SECRET_NAME_PATTERN = (
     r"[\w.-]*?(?:api[_-]?key|token|password|passwd|pwd|secret|"
     r"secret[_-]?key|private[_-]?key|authorization)"
 )
 
-# Поддерживаются присваивания, JSON/YAML и аннотации вида api_key: str = ...
-# Именованная группа «quote» требует одинаковые открывающую и закрывающую
-# кавычки; «value» содержит только проверяемое значение без кавычек.
+# Support assignments, JSON/YAML, and annotations such as api_key: str = ...
+# The named "quote" group requires matching opening and closing quotes.
+# The "value" group contains only the value to check, without its quotes.
 QUOTED_SECRET_PATTERN = re.compile(
     r'''(?i)(?<![\w.-])["']?'''
     + SECRET_NAME_PATTERN
@@ -80,21 +80,21 @@ QUOTED_SECRET_PATTERN = re.compile(
     + r'''(?P<quote>["'`])(?P<value>[^\r\n]*?)(?P=quote)'''
 )
 
-# В настройках значение может идти без кавычек, в том числе после export.
+# Configuration values may be unquoted, including assignments after export.
 UNQUOTED_SECRET_PATTERN = re.compile(
     r"(?i)^\s*(?:export\s+)?"
     + SECRET_NAME_PATTERN
     + r'''\s*[:=]\s*(?P<value>[^\s"'`#;,]+)'''
 )
 
-# В исходном коде password = settings.password — ссылка на переменную.
-# В конфигурационном файле password = actualPassword — готовый пароль.
+# In source code, password = settings.password is a variable reference.
+# In a configuration file, password = actualPassword is a literal password.
 CODE_FILE_SUFFIXES = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".go", ".rs",
     ".c", ".cpp", ".h", ".cs", ".rb", ".php", ".swift", ".tf",
 }
 
-# Исключаем только точные заглушки, а не любую строку со словом «example».
+# Exempt exact placeholders, not arbitrary strings containing "example".
 PLACEHOLDER_VALUES = {
     "changeme", "change_me", "change-me", "replace_me", "replace-me",
     "your_api_key_here", "your-api-key-here", "your_token_here",
@@ -115,24 +115,24 @@ JS_MEMBER = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+")
 
 
 class CheckError(Exception):
-    """Ошибка, из-за которой нельзя подтвердить завершение проверки."""
+    """An error that prevents confirmation that the scan completed."""
 
 
 def run_git(repository: str, *arguments: str) -> bytes:
-    """Выполнить читающую команду Git и вернуть stdout в исходных байтах.
+    """Run a read-only Git command and return its raw stdout bytes.
 
-    Подмены объектов и загрузка отсутствующих объектов отключены: проверять
-    нужно реальные локальные данные будущего коммита. Переменные окружения
-    Git сохраняются, поскольку hook может получать отдельный временный индекс.
+    Disable object replacement and fetching of missing objects so the scan
+    checks the actual local data for the pending commit. Preserve Git environment
+    variables because a hook may receive a separate temporary index.
 
-    При ошибке или тайм-ауте возбуждается CheckError. Исходный stderr Git
-    не включается в сообщение: в нём могут оказаться чувствительные данные.
+    Raise CheckError on failure or timeout. Never include Git's raw stderr in
+    the error message because it may contain sensitive data.
     """
     command = [
         "git",
-        "--no-replace-objects",  # Не позволять git replace скрыть исходный секрет.
-        "--no-lazy-fetch",  # Не скачивать недостающие объекты даже в partial clone.
-        "--no-optional-locks",  # Не делать необязательные записи в индекс.
+        "--no-replace-objects",  # Prevent git replace from hiding an original secret.
+        "--no-lazy-fetch",  # Never fetch missing objects, even in partial clones.
+        "--no-optional-locks",  # Avoid optional index writes.
         "-c",
         "core.fsmonitor=false",  # Do not invoke a configured external helper.
         "-C",
@@ -159,7 +159,7 @@ def run_git(repository: str, *arguments: str) -> bytes:
 
 
 def is_placeholder(value: str) -> bool:
-    """Проверить, является ли значение пустым, заглушкой или ссылкой ${VAR}."""
+    """Check whether a value is empty, a placeholder, or a reference like ${VAR}."""
     value = value.strip()
     if not value or value.lower() in PLACEHOLDER_VALUES:
         return True
@@ -167,10 +167,10 @@ def is_placeholder(value: str) -> bool:
 
 
 def is_sensitive_filename(path: str) -> bool:
-    """Определить файлы, которые блокируются по имени независимо от содержимого.
+    """Identify filenames that are blocked regardless of their content.
 
-    Шаблоны вроде .env.example не блокируются по имени, но их содержимое
-    проходит обычный поиск секретов вместе с остальными файлами.
+    Templates such as .env.example are allowed by name, but their contents
+    still undergo the same secret detection as other files.
     """
     filename = PurePosixPath(path).name.lower()
     is_template = filename.endswith((".example", ".sample", ".template", ".dist"))
@@ -185,12 +185,12 @@ def is_sensitive_filename(path: str) -> bool:
 
 
 def decode_file_content(data: bytes) -> str:
-    """Получить текст для поиска, распознав UTF-16/32 по отметке BOM.
+    """Decode searchable text, recognizing UTF-16/32 by their byte order marks.
 
-    Остальные данные читаются как UTF-8 с заменой повреждённых символов.
-    Бинарные файлы не пропускаются: внутри них могут быть обычные ASCII-токены.
+    Decode other data as UTF-8, replacing invalid characters. Do not skip
+    binary files: they may contain ordinary ASCII tokens.
     """
-    # BOM UTF-32 начинается так же, как BOM UTF-16: порядок проверок важен.
+    # UTF-32 and UTF-16 byte order marks share a prefix, so check order matters.
     if data.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
         return data.decode("utf-32", errors="replace")
     if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
@@ -199,11 +199,11 @@ def decode_file_content(data: bytes) -> str:
 
 
 def find_secrets(text: str, path: str) -> Iterator[tuple[int, str]]:
-    """Выдать пары (номер строки, имя правила) для возможных секретов.
+    """Yield (line number, rule name) pairs for possible secrets.
 
-    Сначала ищутся узнаваемые форматы токенов, затем значения переменных
-    с чувствительными именами. Сами найденные значения наружу не передаются.
-    Путь нужен для различения исходного кода и конфигурационных файлов.
+    Check recognizable token formats first, then values assigned to sensitive
+    names. Never return the matched values. Use the path to distinguish source
+    code from configuration files.
     """
     file = PurePosixPath(path)
     is_source_code = file.suffix.lower() in CODE_FILE_SUFFIXES
@@ -225,7 +225,7 @@ def find_secrets(text: str, path: str) -> Iterator[tuple[int, str]]:
                 if "value" in match.groupdict() and is_placeholder(match["value"]):
                     continue
                 yield line_number, rule_name
-                break  # Достаточно одной находки этого правила на строке.
+                break  # One finding per rule per line is enough.
 
         for pattern in (QUOTED_SECRET_PATTERN, UNQUOTED_SECRET_PATTERN):
             for match in pattern.finditer(line):
@@ -237,8 +237,8 @@ def find_secrets(text: str, path: str) -> Iterator[tuple[int, str]]:
                 if pattern is UNQUOTED_SECRET_PATTERN:
                     if value.lower() in NON_SECRET_LITERALS:
                         continue
-                    # В коде неквотированные имена и вызовы считаются выражениями.
-                    # Числовой литерал при этом всё ещё может быть паролем/PIN.
+                    # Treat unquoted names and calls in source code as expressions.
+                    # A numeric literal may still be a password or PIN.
                     if is_source_code and not value.isdecimal():
                         continue
                     tail = line[match.end():].lstrip()
@@ -248,11 +248,11 @@ def find_secrets(text: str, path: str) -> Iterator[tuple[int, str]]:
 
 
 def get_staged_paths(repository: str) -> set[bytes]:
-    """Получить пути изменённых файлов из индекса, исключая удалённые.
+    """Get changed index paths, excluding deleted files.
 
-    Без распознавания переименований Git выдаёт удаление старого пути и
-    добавление нового. Так новое содержимое обязательно попадает в проверку.
-    Разделитель NUL сохраняет пробелы, табуляции и переводы строк в путях.
+    With rename detection disabled, Git reports a deletion of the old path and
+    an addition of the new one, ensuring that the new content is scanned.
+    NUL delimiters preserve spaces, tabs, and newlines in paths.
     """
     output = run_git(
         repository,
@@ -277,11 +277,11 @@ def report_results(
     submodule_count: int,
     show_paths: bool = False,
 ) -> int:
-    """Вывести безопасный отчёт и вернуть код выхода для Git hook.
+    """Print a safe report and return the exit code for a Git hook.
 
-    Находка содержит идентификатор файла (или путь по запросу), строку и правило.
-    Ошибка проверки имеет приоритет над находками: код 2 сообщает, что часть
-    файлов проверить не удалось, даже если в остальных уже найдены секреты.
+    Findings contain a file identifier (or an explicitly requested path), line,
+    and rule. Errors take priority over findings: exit 2 means some files could
+    not be checked, even if secrets were already found in others.
     """
     for display_path, line_number, rule_name in sorted(secret_findings):
         print(
@@ -318,12 +318,12 @@ def scan_repository(
     max_file_bytes: int,
     show_paths: bool = False,
 ) -> int:
-    """Проверить содержимое индекса репозитория и вернуть код результата.
+    """Scan the repository index and return the result code.
 
-    include_unchanged включает все файлы индекса вместо только изменённых.
-    max_file_bytes ограничивает размер одного файла: превышение считается
-    ошибкой проверки, поэтому слишком большой файл не проходит незаметно.
-    Содержимое читается по ID объекта Git, а не по пути в рабочей папке.
+    include_unchanged selects every index file rather than only changed files.
+    max_file_bytes limits each file's size; exceeding it is a scan error, so
+    oversized files cannot pass silently. Read content by Git object ID,
+    never from the corresponding working-tree path.
     """
     # Keep the caller's working directory for every Git command. Resolving and
     # switching to the root would change relative GIT_INDEX_FILE/GIT_DIR paths.
@@ -338,7 +338,7 @@ def scan_repository(
     index_arguments = ("ls-files", "--stage", "--full-name", "-z", "--", ":/")
     index_output = run_git(repository, *index_arguments)
 
-    # None означает проверку всего индекса; пустое множество — отсутствие изменений.
+    # None selects the entire index; an empty set means there are no staged changes.
     selected_paths: Optional[set[bytes]] = None
     if not include_unchanged:
         selected_paths = get_staged_paths(repository)
@@ -352,8 +352,8 @@ def scan_repository(
         if not entry:
             continue
 
-        # Формат Git: «режим ID_объекта стадия<TAB>путь<NUL>».
-        # Делим только по первой табуляции: остальные могут быть частью пути.
+        # Git's format is "mode object_id stage<TAB>path<NUL>".
+        # Split only at the first tab; any remaining tabs belong to the path.
         metadata, raw_path = entry.split(b"\t", 1)
         if selected_paths is not None and raw_path not in selected_paths:
             continue
@@ -372,10 +372,10 @@ def scan_repository(
             if show_paths
             else "file[" + hashlib.sha256(raw_path).hexdigest()[:16] + "]"
         )
-        if index_stage != "0":  # Стадии 1–3 обозначают неразрешённый конфликт.
+        if index_stage != "0":  # Stages 1-3 indicate an unresolved merge conflict.
             scan_errors.append(display_path + ": unresolved merge conflict")
             continue
-        if file_mode == "160000":  # Подмодуль хранится как ссылка на чужой коммит.
+        if file_mode == "160000":  # A submodule stores a pointer to another commit.
             submodule_count += 1
             continue
         if is_sensitive_filename(path):
@@ -418,7 +418,7 @@ class SafeArgumentParser(argparse.ArgumentParser):
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """Разобрать параметры запуска и преобразовать ошибки в ненулевой код выхода."""
+    """Parse command-line arguments and map errors to nonzero exit codes."""
     parser = SafeArgumentParser(prog="check-secrets", description=__doc__, allow_abbrev=False)
     parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
     parser.add_argument(
