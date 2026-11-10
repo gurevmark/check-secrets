@@ -23,7 +23,7 @@ implied):
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install 'git+https://github.com/gurevmark/check-secrets.git@v0.1.0'
+python -m pip install 'git+https://github.com/gurevmark/check-secrets.git@v0.1.1'
 check-secrets --version
 ```
 
@@ -102,7 +102,7 @@ Install the [pre-commit framework](https://pre-commit.com/#install), then add:
 ```yaml
 repos:
   - repo: https://github.com/gurevmark/check-secrets
-    rev: v0.1.0  # Use a reviewed full commit SHA for an immutable pin.
+    rev: v0.1.1  # Use a reviewed full commit SHA for an immutable pin.
     hooks:
       - id: check-secrets
 ```

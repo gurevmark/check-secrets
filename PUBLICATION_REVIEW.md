@@ -1,6 +1,6 @@
 # Initial publication review
 
-Date: 2026-11-10. Version: 0.1.0.
+Date: 2026-11-10. Versions: initial 0.1.0 extraction and 0.1.1 fixture correction.
 
 This records the local publication gate performed with Codex assistance. It is
 not an independent security audit, a legal opinion, or a guarantee that every
@@ -62,3 +62,9 @@ after pushing. Treat the check results for the exact commit being consumed as
 the evidence for those platforms, rather than extrapolating from the local run.
 Some filename and symlink tests explicitly skip when a platform cannot represent
 the fixture. The workflow does not publish packages to PyPI.
+
+The first Windows run exposed newline translation in the partial-add test
+fixtures: a text write converted LF to CRLF, changing every line and merging two
+intended hunks. Version 0.1.1 writes those fixtures as UTF-8 bytes, matching the
+baseline on all platforms. The detection rules did not change. The original
+0.1.0 tag is preserved; use 0.1.1 or a reviewed later commit.

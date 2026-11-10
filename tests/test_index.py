@@ -25,13 +25,15 @@ class IndexTests(RepositoryCase):
         content[0] = SAMPLE_GITHUB + "\n"
         content[-1] = "unstaged edit\n"
         path = self.repo / "sample.txt"
-        path.write_text("".join(content))
+        # Preserve baseline LF bytes on Windows as well. Newline translation
+        # would change every line and merge these edits into one patch hunk.
+        path.write_bytes("".join(content).encode("utf-8"))
         self.partial_add("sample.txt")
         staged = self.git("show", ":sample.txt")
         self.assertIn(SAMPLE_GITHUB.encode(), staged)
         self.assertNotIn(b"unstaged edit", staged)
         content[0] = "fixed only on disk\n"
-        path.write_text("".join(content))
+        path.write_bytes("".join(content).encode("utf-8"))
         index_before = (self.repo / ".git/index").read_bytes()
         work_before = path.read_bytes()
         result = self.scan()
@@ -44,7 +46,7 @@ class IndexTests(RepositoryCase):
         content = self.baseline()
         content[0] = "safe staged edit\n"
         content[-1] = SAMPLE_GITHUB + "\n"
-        (self.repo / "sample.txt").write_text("".join(content))
+        (self.repo / "sample.txt").write_bytes("".join(content).encode("utf-8"))
         self.partial_add("sample.txt")
         self.assertNotIn(SAMPLE_GITHUB.encode(), self.git("show", ":sample.txt"))
         self.assertEqual(self.scan().returncode, 0)
